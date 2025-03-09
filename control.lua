@@ -1,9 +1,16 @@
 ---@class PoleCrashersDeanonymised
 ---@field car_drivers table<uint,LuaPlayer?>
+---@field dying_pole table<uint, pole_dying_info>
 storage = storage
+
+---@class pole_dying_info
+---@field connections table<defines.wire_connector_id, LuaWireConnector[]>
+---@field driver LuaPlayer
+---@field gps_tag string
 
 local function setup_storage()
 	storage.car_drivers = storage.car_drivers or {}
+	storage.dying_pole = storage.dying_pole or {}
 end
 
 script.on_init(function ()
@@ -13,54 +20,27 @@ script.on_configuration_changed(function (p1)
 	setup_storage()
 end)
 
-
---- How many networks would exist without this connector
 ---@param connector LuaWireConnector
----@return uint
-local function splitting_connection(connector)
-	if connector.real_connection_count == 0 then
-		log("Pole had no real connections of tested type")
-		return 0
+---@return LuaWireConnector[]
+local function get_real_connections(connector)
+	---@type LuaWireConnector[]
+	local connections, index = {}, 0
+	for _, connection in pairs(connector.real_connections) do
+		local other_connector = connection.target
+		index = index + 1
+		connections[index] = other_connector
 	end
-	local connections = connector.connections
-	local real_connections = connector.real_connections
-
-	---@type table<uint,true>
-	local networks = {}
-	local networks_count = 0
-
-	-- Disconnect every connection
-	connector.disconnect_all()
-	-- Record and count the disconnected networks
-	for _, connection in pairs(real_connections) do
-		networks[connection.target.network_id] = true
-	end
-	for _ in pairs(networks) do
-		networks_count = networks_count + 1
-	end
-	-- Reconnect so the ghost preserves it
-	for _, connection in pairs(connections) do
-		if connection.origin == defines.wire_origin.player then
-			connector.connect_to(connection.target, false)
-		end
-	end
-
-	return networks_count
+	return connections
 end
-
---- How many networks would exist without these connectors
----@param connectors table<defines.wire_connector_id,LuaWireConnector>
----@return table<defines.wire_connector_id, uint>
-local function splitting_connections(connectors)
-	---@type table<defines.wire_connector_id, uint>
-	local networks = {}
+---@param connectors table<defines.wire_connector_id, LuaWireConnector>
+---@return table<defines.wire_connector_id, LuaWireConnector[]>
+local function get_all_real_connections(connectors)
+	---@type table<defines.wire_connector_id, LuaWireConnector[]>
+	local all_connections = {}
 	for connector_id, connector in pairs(connectors) do
-		local new_networks = splitting_connection(connector)
-		if new_networks > 1 then
-			networks[connector_id] = new_networks
-		end
+		all_connections[connector_id] = get_real_connections(connector)
 	end
-	return networks
+	return all_connections
 end
 
 ---@type boolean?
@@ -129,7 +109,6 @@ script.on_event(defines.events.on_player_driving_changed_state, function (event)
 	storage.car_drivers[new_vehicle.unit_number--[[@as uint]]] = player
 	script.register_on_object_destroyed(new_vehicle)
 end)
-
 -- Do not memory leak cars that die
 script.on_event(defines.events.on_object_destroyed, function (event)
 	storage.car_drivers[event.useful_id] = nil
@@ -150,13 +129,50 @@ script.on_event(defines.events.on_entity_died, function (event)
 	end
 
 	local entity = event.entity
-	local split_networks = splitting_connections(entity.get_wire_connectors(false))
+	local connectors = entity.get_wire_connectors(false)
+	-- local split_networks = splitting_connections(connectors)
+
+	storage.dying_pole[entity.unit_number--[[@as uint]]] = {
+		driver = driver,
+		gps_tag = entity.gps_tag,
+		connections = get_all_real_connections(connectors)
+	}
+end,
+{
+	{
+		filter = "type",
+		type = "electric-pole",
+	}
+})
+
+script.on_event(defines.events.on_post_entity_died, function (event)
+	if not event.unit_number then return end
+	local pole_info = storage.dying_pole[event.unit_number--[[@as uint]]]
+	if not pole_info then return end
 
 	---@type LocalisedString
 	local message = {"pcd.deanonymised-pole-destruction",
-		colored_username(driver),
-		entity.gps_tag
+		colored_username(pole_info.driver),
+		pole_info.gps_tag
 	}
+
+	---@type table<defines.wire_connector_id, uint>
+	local split_networks = {}
+
+	for connector_type, connections in pairs(pole_info.connections) do
+		---@type table<uint,true>
+		local networks = {}
+		for _, connector in pairs(connections) do
+			if connector.valid then
+				networks[connector.network_id] = true
+			end
+		end
+
+		local size = table_size(networks)
+		if size > 1 then
+			split_networks[connector_type] = size
+		end
+	end
 
 	if next(split_networks) then
 		message = {"", message, "\n", {"pcd.network-splitting-header"}}
@@ -164,7 +180,7 @@ script.on_event(defines.events.on_entity_died, function (event)
 
 		for network_type, new_networks  in pairs(split_networks) do
 			if new_networks > 1 then
-				message[count + 1] = "\n\t"
+				message[count + 1] = "\n\t- "
 				message[count + 2] = {"pcd.network-splitting-entry", network_type, new_networks}
 				count = count + 2
 			end
