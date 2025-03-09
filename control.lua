@@ -6,6 +6,7 @@ storage = storage
 ---@class pole_dying_info
 ---@field connections table<defines.wire_connector_id, LuaWireConnector[]>
 ---@field driver LuaPlayer
+---@field force LuaForce
 ---@field gps_tag string
 
 local function setup_storage()
@@ -121,18 +122,20 @@ script.on_event(defines.events.on_entity_died, function (event)
 	local vehicle = event.cause
 	if not vehicle or vehicle.type ~= "car" then return log("Pole didn't die to a Vehicle") end
 	local driver = vehicle.get_driver() or storage.car_drivers[vehicle.unit_number]
-	if not driver then return log ("Pole was run over by a vehicle with no driver?") end
+	if not driver then return log("Pole was run over by a vehicle with no driver?") end
+	local entity = event.entity
+	if entity.force ~= driver.force then log("Pole was run over by the enemy. Shutting up.") end
 
 	if driver.object_name == "LuaEntity" then
 		driver = driver.player or driver.associated_player--[[@as LuaPlayer]]
 		if not driver then return error("How can a driver not be associated with a LuaPlayer?") end
 	end
 
-	local entity = event.entity
 	local connectors = entity.get_wire_connectors(false)
 	-- local split_networks = splitting_connections(connectors)
 
 	storage.dying_pole[entity.unit_number--[[@as uint]]] = {
+		force = entity.force--[[@as LuaForce]],
 		driver = driver,
 		gps_tag = entity.gps_tag,
 		connections = get_all_real_connections(connectors)
@@ -149,6 +152,7 @@ script.on_event(defines.events.on_post_entity_died, function (event)
 	if not event.unit_number then return end
 	local pole_info = storage.dying_pole[event.unit_number--[[@as uint]]]
 	if not pole_info then return end
+	storage.dying_pole[event.unit_number--[[@as uint]]] = nil
 
 	---@type LocalisedString
 	local message = {"pcd.deanonymised-pole-destruction",
@@ -197,8 +201,7 @@ script.on_event(defines.events.on_post_entity_died, function (event)
 		end
 	end
 
-	compat_send(game, message)
-	log("REPORTED")
+	compat_send(pole_info.force, message)
 end,
 {
 	{
