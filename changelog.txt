@@ -1,5 +1,10 @@
 ---------------------------------------------------------------------------------------------------
-Version: 1.0.0
+Version: 1.0.1
 Date: ????
+  Features:
+    - Added a setting to disable reporting poles that don't split any networks
+---------------------------------------------------------------------------------------------------
+Version: 1.0.0
+Date: 2025-03-09
   Changes:
     - Existence

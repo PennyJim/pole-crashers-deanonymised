@@ -2,7 +2,7 @@
 	"name": "pole-crashers-deanonymised",
 	"title": "Pole Crashers De-Anonymised",
 	"description": "Will alert with detail, whenever someone crashes into a pole, destroying it.",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"author": "PennyJim",
 	"factorio_version": "2.0",
 	"package": {

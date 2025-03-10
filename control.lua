@@ -199,6 +199,8 @@ script.on_event(defines.events.on_post_entity_died, function (event)
 			message[5] = nil
 			message[6] = nil
 		end
+	elseif not settings.global["pcd-always-report"].value then
+		return log("Pole didn't sever any networks")
 	end
 
 	compat_send(pole_info.force, message)
