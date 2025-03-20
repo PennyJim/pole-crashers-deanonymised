@@ -47,41 +47,46 @@ end
 ---@type boolean?
 local has_better_chat = nil
 local send_levels = {
-  ["LuaGameScript"] = "global",
-  ["LuaForce"] = "force",
-  ["LuaPlayer"] = "player",
-  ["LuaSurface"] = "surface",
+	["LuaGameScript"] = "global",
+	["LuaForce"] = "force",
+	["LuaPlayer"] = "player",
+	["LuaSurface"] = "surface",
 }
 --- Safely attempts to print via the Better Chatting's interface
 ---@param recipient LuaGameScript|LuaForce|LuaPlayer|LuaSurface
 ---@param msg LocalisedString
 ---@param print_settings PrintSettings?
 local function compat_send(recipient, msg, print_settings)
-  if has_better_chat == nil then
-    local better_chat = remote.interfaces["better-chat"]
-    has_better_chat = better_chat and better_chat["send"]
-  end
+	if has_better_chat == nil then
+		local better_chat = remote.interfaces["better-chat"]
+		has_better_chat = better_chat and better_chat["send"]
+	end
 
-  if not has_better_chat then return recipient.print(msg, print_settings) end
-  print_settings = print_settings or {}
+	if not has_better_chat then return recipient.print(msg, print_settings) end
+	print_settings = print_settings or {}
 
 
-  local send_level = send_levels[recipient.object_name]
-  ---@type int?
-  local send_index
-  if send_level ~= "global" then
-    send_index = recipient.index
+	local send_level = send_levels[recipient.object_name]
+	---@type int?
+	local send_index
+	if send_level ~= "global" then
+		send_index = recipient.index
 		if not send_index then
 			error("Invalid Recipient", 2)
 		end
-  end
+	end
 
-  remote.call("better-chat", "send", {
-    message = msg,
-    send_level = send_level,
-    color = print_settings.color,
-    recipient = send_index,
-  })
+	remote.call("better-chat", "send", {
+		message = msg,
+		send_level = send_level,
+		color = print_settings.color,
+		recipient = send_index,
+		clear = false,
+
+		sound = print_settings.sound,
+		sound_path = print_settings.sound_path,
+		volume_modifier = print_settings.volume_modifier
+	})
 end
 
 ---Returns the LocalisedString of the user's name with color
